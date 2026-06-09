@@ -22,7 +22,10 @@ export type {
   ControlDiscoverReqPayload,
   ControlDiscoverRespPayload,
   ControlPayload,
-  PayloadData 
+  GroupDataPayload,
+  MultipartPayload,
+  RawCustomPayload,
+  PayloadData
 } from './types/payloads';
 export type { CryptoKeyStore, DecryptionOptions, DecryptionResult, ValidationResult } from './types/crypto';
 
