@@ -3,73 +3,14 @@
 
 import * as ed25519 from '@noble/ed25519';
 import { hexToBytes, bytesToHex } from '../utils/hex';
-import { derivePublicKey as derivePublicKeyWasm, validateKeyPair as validateKeyPairWasm } from './orlp-ed25519-wasm';
+import { sha512 } from './lite-crypto';
+import { derivePublicKey as derivePublicKeyImpl, validateKeyPair as validateKeyPairImpl } from './orlp-ed25519';
 
-// Cross-platform SHA-512 implementation
-async function sha512Hash(data: Uint8Array): Promise<Uint8Array> {
-  // Browser environment - use Web Crypto API
-  if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.subtle) {
-    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-512', data);
-    return new Uint8Array(hashBuffer);
-  }
-  
-  // Node.js environment - use crypto module
-  if (typeof require !== 'undefined') {
-    try {
-      const { createHash } = require('crypto');
-      return createHash('sha512').update(data).digest();
-    } catch (error) {
-      // Fallback for environments where require is not available
-    }
-  }
-  
-  throw new Error('No SHA-512 implementation available');
-}
-
-function sha512HashSync(data: Uint8Array): Uint8Array {
-  // Node.js environment - use crypto module
-  if (typeof require !== 'undefined') {
-    try {
-      const { createHash } = require('crypto');
-      return createHash('sha512').update(data).digest();
-    } catch (error) {
-      // Fallback
-    }
-  }
-  
-  // Browser environment fallback - use crypto-js for sync operation
-  try {
-    const CryptoJS = require('crypto-js');
-    const wordArray = CryptoJS.lib.WordArray.create(data);
-    const hash = CryptoJS.SHA512(wordArray);
-    const hashBytes = new Uint8Array(64);
-    
-    // Convert CryptoJS hash to Uint8Array
-    for (let i = 0; i < 16; i++) {
-      const word = hash.words[i] || 0;
-      hashBytes[i * 4] = (word >>> 24) & 0xff;
-      hashBytes[i * 4 + 1] = (word >>> 16) & 0xff;
-      hashBytes[i * 4 + 2] = (word >>> 8) & 0xff;
-      hashBytes[i * 4 + 3] = word & 0xff;
-    }
-    
-    return hashBytes;
-  } catch (error) {
-    // Final fallback - this should not happen since crypto-js is a dependency
-    throw new Error('No SHA-512 implementation available for synchronous operation');
-  }
-}
-
-// Set up SHA-512 for @noble/ed25519
-(ed25519 as any).etc.sha512Async = sha512Hash;
-
-// Always set up sync version - @noble/ed25519 requires it
-// It will throw in browser environments, which @noble/ed25519 can handle
-try {
-  (ed25519 as any).etc.sha512Sync = sha512HashSync;
-} catch (error) {
-  console.debug('Could not set up synchronous SHA-512:', error);
-}
+// Wire SHA-512 into @noble/ed25519 using the bundled (dependency-free) hash.
+// This works synchronously in both Node and the browser.
+const concatBytes = (ed25519 as any).etc.concatBytes as (...a: Uint8Array[]) => Uint8Array;
+(ed25519 as any).etc.sha512Sync = (...m: Uint8Array[]): Uint8Array => sha512(concatBytes(...m));
+(ed25519 as any).etc.sha512Async = async (...m: Uint8Array[]): Promise<Uint8Array> => sha512(concatBytes(...m));
 
 export class Ed25519SignatureVerifier {
   /**
@@ -163,13 +104,12 @@ export class Ed25519SignatureVerifier {
   static async derivePublicKey(privateKeyHex: string): Promise<string> {
     try {
       const privateKeyBytes = hexToBytes(privateKeyHex);
-      
+
       if (privateKeyBytes.length !== 64) {
         throw new Error(`Invalid private key length: expected 64 bytes, got ${privateKeyBytes.length}`);
       }
-      
-      // Use the orlp/ed25519 WebAssembly implementation
-      return await derivePublicKeyWasm(privateKeyHex);
+
+      return await derivePublicKeyImpl(privateKeyHex);
     } catch (error) {
       throw new Error(`Failed to derive public key: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -206,7 +146,7 @@ export class Ed25519SignatureVerifier {
    */
   static async validateKeyPair(privateKeyHex: string, expectedPublicKeyHex: string): Promise<boolean> {
     try {
-      return await validateKeyPairWasm(privateKeyHex, expectedPublicKeyHex);
+      return await validateKeyPairImpl(privateKeyHex, expectedPublicKeyHex);
     } catch (error) {
       return false;
     }

@@ -78,7 +78,7 @@ describe('Crypto Compatibility', () => {
   describe('Error Path Coverage Tests', () => {
     it('should handle invalid hex in derivePublicKey', async () => {
       const invalidPrivateKey = 'invalid_hex_string'; // Invalid hex
-      
+
       await expect(Ed25519SignatureVerifier.derivePublicKey(invalidPrivateKey))
         .rejects
         .toThrow('Failed to derive public key');
@@ -94,7 +94,7 @@ describe('Crypto Compatibility', () => {
 
     it('should handle short private key in derivePublicKey', async () => {
       const shortPrivateKey = '1234'; // Too short (not 64 bytes)
-      
+
       await expect(Ed25519SignatureVerifier.derivePublicKey(shortPrivateKey))
         .rejects
         .toThrow('Invalid private key length');

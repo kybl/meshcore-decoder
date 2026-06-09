@@ -94,6 +94,10 @@ export interface AnonRequestPayload extends BasePayload {
 
 export interface AckPayload extends BasePayload {
   checksum: string;
+  // Firmware 1.16.0 introduced 6-byte ACKs: 4-byte CRC + extended attempt /
+  // random bytes. The receiver still only uses the first 4 bytes as the CRC;
+  // any trailing bytes are surfaced here verbatim.
+  extraData?: string;
 }
 
 export interface PathPayload extends BasePayload {
@@ -145,6 +149,28 @@ export interface ControlDiscoverRespPayload extends ControlPayloadBase {
   publicKeyLength: number; // 8 (prefix) or 32 (full)
 }
 
+// GRP_DATA (group datagram) — channel_hash + MAC + encrypted data
+export interface GroupDataPayload extends BasePayload {
+  channelHash: string;
+  cipherMac: string;
+  ciphertext: string; // raw encrypted data as hex
+  ciphertextLength: number;
+}
+
+// MULTIPART (multi-packet segment) — on-air layout not part of the public spec
+export interface MultipartPayload extends BasePayload {
+  partial: boolean;
+  raw: string;
+  length: number;
+}
+
+// RAW_CUSTOM — application-defined custom-encrypted payload
+export interface RawCustomPayload extends BasePayload {
+  encrypted: boolean;
+  raw: string;
+  length: number;
+}
+
 // Union type for all Control payload sub-types
 export type ControlPayload = ControlDiscoverReqPayload | ControlDiscoverRespPayload;
 
@@ -159,4 +185,7 @@ export type PayloadData =
   | AckPayload 
   | PathPayload
   | ResponsePayload
-  | ControlPayload;
+  | ControlPayload
+  | GroupDataPayload
+  | MultipartPayload
+  | RawCustomPayload;

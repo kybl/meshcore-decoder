@@ -22,7 +22,10 @@ export type {
   ControlDiscoverReqPayload,
   ControlDiscoverRespPayload,
   ControlPayload,
-  PayloadData 
+  GroupDataPayload,
+  MultipartPayload,
+  RawCustomPayload,
+  PayloadData
 } from './types/payloads';
 export type { CryptoKeyStore, DecryptionOptions, DecryptionResult, ValidationResult } from './types/crypto';
 
@@ -71,7 +74,7 @@ export type { AuthTokenPayload, AuthToken } from './utils/auth-token';
 import * as EnumUtils from './utils/enum-names';
 import * as HexUtils from './utils/hex';
 import * as AuthTokenUtils from './utils/auth-token';
-import { derivePublicKey, validateKeyPair, sign, verify } from './crypto/orlp-ed25519-wasm';
+import { derivePublicKey, validateKeyPair, sign, verify } from './crypto/orlp-ed25519';
 
 export const Utils = {
   ...EnumUtils,

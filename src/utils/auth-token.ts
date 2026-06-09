@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Michael Hart: https://github.com/michaelhart/meshcore-decoder
 // MIT License
 
-import { sign, verify } from '../crypto/orlp-ed25519-wasm';
+import { sign, verify } from '../crypto/orlp-ed25519';
 import { bytesToHex, hexToBytes } from './hex';
 
 /**
