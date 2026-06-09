@@ -17,6 +17,9 @@ import { AckPayloadDecoder } from './payload-decoders/ack';
 import { PathPayloadDecoder } from './payload-decoders/path';
 import { TextMessagePayloadDecoder } from './payload-decoders/text-message';
 import { ControlPayloadDecoder } from './payload-decoders/control';
+import { GroupDataPayloadDecoder } from './payload-decoders/group-data';
+import { MultipartPayloadDecoder } from './payload-decoders/multipart';
+import { RawCustomPayloadDecoder } from './payload-decoders/raw-custom';
 
 export class MeshCorePacketDecoder {
   /**
@@ -372,6 +375,36 @@ export class MeshCorePacketDecoder {
         }
       } else if (payloadType === PayloadType.Control) {
         const result = ControlPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === PayloadType.GroupData) {
+        const result = GroupDataPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === PayloadType.Multipart) {
+        const result = MultipartPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === PayloadType.RawCustom) {
+        const result = RawCustomPayloadDecoder.decode(payloadBytes, {
           includeSegments: includeStructure,
           segmentOffset: 0
         });
