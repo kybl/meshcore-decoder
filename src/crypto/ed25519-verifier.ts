@@ -4,6 +4,7 @@
 import * as ed25519 from '@noble/ed25519';
 import { hexToBytes, bytesToHex } from '../utils/hex';
 import { derivePublicKey as derivePublicKeyWasm, validateKeyPair as validateKeyPairWasm } from './orlp-ed25519-wasm';
+import { sha512 } from './lite-crypto';
 
 // Cross-platform SHA-512 implementation
 async function sha512Hash(data: Uint8Array): Promise<Uint8Array> {
@@ -37,27 +38,8 @@ function sha512HashSync(data: Uint8Array): Uint8Array {
     }
   }
   
-  // Browser environment fallback - use crypto-js for sync operation
-  try {
-    const CryptoJS = require('crypto-js');
-    const wordArray = CryptoJS.lib.WordArray.create(data);
-    const hash = CryptoJS.SHA512(wordArray);
-    const hashBytes = new Uint8Array(64);
-    
-    // Convert CryptoJS hash to Uint8Array
-    for (let i = 0; i < 16; i++) {
-      const word = hash.words[i] || 0;
-      hashBytes[i * 4] = (word >>> 24) & 0xff;
-      hashBytes[i * 4 + 1] = (word >>> 16) & 0xff;
-      hashBytes[i * 4 + 2] = (word >>> 8) & 0xff;
-      hashBytes[i * 4 + 3] = word & 0xff;
-    }
-    
-    return hashBytes;
-  } catch (error) {
-    // Final fallback - this should not happen since crypto-js is a dependency
-    throw new Error('No SHA-512 implementation available for synchronous operation');
-  }
+  // Browser environment fallback - use the bundled (dependency-free) SHA-512
+  return sha512(data);
 }
 
 // Set up SHA-512 for @noble/ed25519

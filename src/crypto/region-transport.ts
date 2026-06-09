@@ -5,7 +5,7 @@
 // - TransportKeyStore::getAutoKeyFor() — key = first 16 bytes of SHA256(regionName)
 // - TransportKey::calcTransportCode() — HMAC-SHA256(key, payloadType || payload), first 2 bytes as LE uint16
 
-import { SHA256, HmacSHA256, enc } from 'crypto-js';
+import { sha256, hmacSha256 } from './lite-crypto';
 import { hexToBytes, bytesToHex } from '../utils/hex';
 
 /** Size of a region transport key in bytes (first 16 bytes of SHA256). */
@@ -30,7 +30,7 @@ export function normalizeRegionName(regionName: string): string {
  */
 export function calcRegionKey(regionName: string): Uint8Array {
   const name = normalizeRegionName(regionName);
-  const hashHex = SHA256(enc.Utf8.parse(name)).toString(enc.Hex);
+  const hashHex = bytesToHex(sha256(new TextEncoder().encode(name)));
   const keyHex = hashHex.slice(0, REGION_KEY_SIZE * 2);
   return hexToBytes(keyHex);
 }
@@ -50,14 +50,10 @@ export function calcTransportCode(
   payloadType: number,
   payload: Uint8Array
 ): number {
-  const keyHex = bytesToHex(regionKey);
-  const keyWords = enc.Hex.parse(keyHex);
   const message = new Uint8Array(1 + payload.length);
   message[0] = payloadType & 0xff;
   message.set(payload, 1);
-  const messageHex = bytesToHex(message);
-  const messageWords = enc.Hex.parse(messageHex);
-  const hmac = HmacSHA256(messageWords, keyWords).toString(enc.Hex);
+  const hmac = bytesToHex(hmacSha256(regionKey, message));
   const firstTwoBytes = hexToBytes(hmac.slice(0, 4));
   let code = firstTwoBytes[0]! | (firstTwoBytes[1]! << 8);
   if (code === 0) code = 1;

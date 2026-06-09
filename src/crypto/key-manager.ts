@@ -59,8 +59,15 @@ export class MeshCoreKeyStore implements CryptoKeyStore {
    */
   addChannelSecrets(secretKeys: string[]): void {
     for (const secretKey of secretKeys) {
-      const channelHash = ChannelCrypto.calculateChannelHash(secretKey).toLowerCase();
-      
+      // Skip malformed (non-hex) secrets instead of throwing (the @noble hex
+      // parser is strict where crypto-js was lenient).
+      let channelHash: string;
+      try {
+        channelHash = ChannelCrypto.calculateChannelHash(secretKey).toLowerCase();
+      } catch {
+        continue;
+      }
+
       // Handle potential hash collisions
       if (!this.channelHashToKeys.has(channelHash)) {
         this.channelHashToKeys.set(channelHash, []);

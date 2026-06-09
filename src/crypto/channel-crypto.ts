@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Michael Hart: https://github.com/michaelhart/meshcore-decoder
 // MIT License
 
-import { HmacSHA256, AES, mode, pad, enc, lib, SHA256 } from 'crypto-js';
+import { sha256, hmacSha256, aesEcbDecryptNoPad } from './lite-crypto';
 import { DecryptionResult } from '../types/crypto';
 import { hexToBytes, bytesToHex } from '../utils/hex';
 
@@ -26,8 +26,7 @@ export class ChannelCrypto {
       channelSecret.set(channelKey16, 0);
       
       // Step 1: Verify HMAC-SHA256 using full 32-byte channel secret
-      const calculatedMac = HmacSHA256(enc.Hex.parse(ciphertext), enc.Hex.parse(bytesToHex(channelSecret)));
-      const calculatedMacBytes = hexToBytes(calculatedMac.toString(enc.Hex));
+      const calculatedMacBytes = hmacSha256(channelSecret, hexToBytes(ciphertext));
       const calculatedMacFirst2 = calculatedMacBytes.slice(0, 2);
       
       if (calculatedMacFirst2[0] !== macBytes[0] || calculatedMacFirst2[1] !== macBytes[1]) {
@@ -35,16 +34,7 @@ export class ChannelCrypto {
       }
       
       // Step 2: Decrypt using AES-128 ECB with first 16 bytes of channel secret
-      const keyWords = enc.Hex.parse(channelKey);
-      const ciphertextWords = enc.Hex.parse(ciphertext);
-      
-      const decrypted = AES.decrypt(
-        lib.CipherParams.create({ ciphertext: ciphertextWords }),
-        keyWords,
-        { mode: mode.ECB, padding: pad.NoPadding }
-      );
-      
-      const decryptedBytes = hexToBytes(decrypted.toString(enc.Hex));
+      const decryptedBytes = aesEcbDecryptNoPad(channelKey16, hexToBytes(ciphertext));
       
       if (!decryptedBytes || decryptedBytes.length < 5) {
         return { success: false, error: 'Decrypted content too short' };
@@ -107,8 +97,7 @@ export class ChannelCrypto {
    * Returns the first byte of SHA256(secret) as hex string
    */
   static calculateChannelHash(secretKeyHex: string): string {
-    const hash = SHA256(enc.Hex.parse(secretKeyHex));
-    const hashBytes = hexToBytes(hash.toString(enc.Hex));
+    const hashBytes = sha256(hexToBytes(secretKeyHex));
     return hashBytes[0].toString(16).padStart(2, '0');
   }
 }
