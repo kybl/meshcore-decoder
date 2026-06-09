@@ -94,6 +94,10 @@ export interface AnonRequestPayload extends BasePayload {
 
 export interface AckPayload extends BasePayload {
   checksum: string;
+  // Firmware 1.16.0 introduced 6-byte ACKs: 4-byte CRC + extended attempt /
+  // random bytes. The receiver still only uses the first 4 bytes as the CRC;
+  // any trailing bytes are surfaced here verbatim.
+  extraData?: string;
 }
 
 export interface PathPayload extends BasePayload {
