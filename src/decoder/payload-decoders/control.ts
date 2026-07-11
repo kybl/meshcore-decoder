@@ -228,8 +228,29 @@ export class ControlPayloadDecoder {
     }
     offset += 4;
 
-    // Remaining bytes: public key (8 bytes for prefix, 32 bytes for full)
+    // Remaining bytes: public key — payloads.md allows exactly 8 (prefix) or
+    // 32 (full). Anything else is malformed; flag it instead of accepting it.
     const remainingBytes = payload.length - offset;
+    if (remainingBytes !== 8 && remainingBytes !== 32) {
+      const result: ControlDiscoverRespPayload & { segments?: PayloadSegment[] } = {
+        type: PayloadType.Control,
+        version: PayloadVersion.Version1,
+        isValid: false,
+        errors: [`DISCOVER_RESP pubkey length ${remainingBytes} invalid (must be 8 or 32)`],
+        subType: ControlSubType.NodeDiscoverResp,
+        rawFlags,
+        nodeType,
+        nodeTypeName,
+        snr,
+        tag,
+        publicKey: bytesToHex(payload.slice(offset)),
+        publicKeyLength: remainingBytes
+      };
+      if (options?.includeSegments) {
+        result.segments = segments;
+      }
+      return result;
+    }
     const publicKeyLength = remainingBytes;
     const publicKeyBytes = payload.slice(offset, offset + publicKeyLength);
     const publicKey = bytesToHex(publicKeyBytes);
