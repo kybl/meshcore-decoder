@@ -3,102 +3,61 @@
 
 import { PathPayload } from '../../types/payloads';
 import { PayloadType, PayloadVersion } from '../../types/enums';
-import { bytesToHex } from '../../utils/hex';
+import { byteToHex, bytesToHex } from '../../utils/hex';
 
 export class PathPayloadDecoder {
   static decode(payload: Uint8Array): PathPayload | null {
     try {
-      // Based on MeshCore payloads.md - Path payload structure:
-      // - path_len (1 byte, encoded: bits 7:6 = hash size selector, bits 5:0 = hop count)
-      // - path (variable length) - list of node hashes (pathHashSize bytes each)
-      // - extra_type (1 byte) - bundled payload type
-      // - extra (rest of data) - bundled payload content
+      // Per MeshCore docs/payloads.md ("Returned path, request, response, and
+      // plain text message are all formatted in the same way") and
+      // Mesh::createPathReturn / Mesh::onRecvPacket in the firmware:
+      // - destination_hash (1 byte)
+      // - source_hash (1 byte)
+      // - cipher_mac (2 bytes)
+      // - ciphertext (rest) — encrypted {path_len, path, extra_type, extra},
+      //   readable only by the destination node (pairwise shared secret).
+      //
+      // The upstream decoder parsed the OUTER payload as if it began with the
+      // plaintext path_len — i.e. it applied the decrypted body's layout to
+      // the encrypted envelope, reading the destination hash as a path length.
+      // Real-world Path packets then failed with bogus errors like
+      // "Path payload too short (need 140 bytes …)".
 
-      if (payload.length < 2) {
+      if (payload.length < 4) {
         return {
           type: PayloadType.Path,
           version: PayloadVersion.Version1,
           isValid: false,
-          errors: ['Path payload too short (minimum 2 bytes: path length + extra type)'],
-          pathLength: 0,
-          pathHashSize: 1,
-          pathHashes: [],
-          extraType: 0,
-          extraData: ''
+          errors: ['Path payload too short (minimum 4 bytes: dest + source + MAC)'],
+          destinationHash: '',
+          sourceHash: '',
+          cipherMac: '',
+          ciphertext: '',
+          ciphertextLength: 0
         };
-      }
-
-      const pathLenByte = payload[0];
-      const pathHashSize = (pathLenByte >> 6) + 1;
-      const pathHopCount = pathLenByte & 63;
-      const pathByteLength = pathHopCount * pathHashSize;
-
-      if (pathHashSize === 4) {
-        return {
-          type: PayloadType.Path,
-          version: PayloadVersion.Version1,
-          isValid: false,
-          errors: ['Invalid path length byte: reserved hash size (bits 7:6 = 11)'],
-          pathLength: 0,
-          pathHashSize,
-          pathHashes: [],
-          extraType: 0,
-          extraData: ''
-        };
-      }
-
-      if (payload.length < 1 + pathByteLength + 1) {
-        return {
-          type: PayloadType.Path,
-          version: PayloadVersion.Version1,
-          isValid: false,
-          errors: [`Path payload too short (need ${1 + pathByteLength + 1} bytes for path length + path + extra type)`],
-          pathLength: pathHopCount,
-          pathHashSize,
-          pathHashes: [],
-          extraType: 0,
-          extraData: ''
-        };
-      }
-
-      // Parse path hashes (pathHashSize bytes each)
-      const pathHashes: string[] = [];
-      for (let i = 0; i < pathHopCount; i++) {
-        const hashStart = 1 + i * pathHashSize;
-        const hashBytes = payload.subarray(hashStart, hashStart + pathHashSize);
-        pathHashes.push(bytesToHex(hashBytes));
-      }
-
-      // Parse extra type (1 byte after path)
-      const extraType = payload[1 + pathByteLength];
-
-      // Parse extra data (remaining bytes)
-      let extraData = '';
-      if (payload.length > 1 + pathByteLength + 1) {
-        extraData = bytesToHex(payload.subarray(1 + pathByteLength + 1));
       }
 
       return {
         type: PayloadType.Path,
         version: PayloadVersion.Version1,
         isValid: true,
-        pathLength: pathHopCount,
-        pathHashSize,
-        pathHashes,
-        extraType,
-        extraData
+        destinationHash: byteToHex(payload[0]),
+        sourceHash: byteToHex(payload[1]),
+        cipherMac: bytesToHex(payload.subarray(2, 4)),
+        ciphertext: bytesToHex(payload.subarray(4)),
+        ciphertextLength: payload.length - 4
       };
     } catch (error) {
       return {
         type: PayloadType.Path,
         version: PayloadVersion.Version1,
         isValid: false,
-        errors: [error instanceof Error ? error.message : 'Failed to decode Path payload'],
-        pathLength: 0,
-        pathHashSize: 1,
-        pathHashes: [],
-        extraType: 0,
-        extraData: ''
+        errors: [error instanceof Error ? error.message : 'Failed to decode path payload'],
+        destinationHash: '',
+        sourceHash: '',
+        cipherMac: '',
+        ciphertext: '',
+        ciphertextLength: 0
       };
     }
   }

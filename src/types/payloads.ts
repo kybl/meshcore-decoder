@@ -100,12 +100,15 @@ export interface AckPayload extends BasePayload {
   extraData?: string;
 }
 
+// Same encrypted envelope as Request/Response/TextMessage (docs/payloads.md):
+// the returned path itself lives INSIDE the ciphertext and is readable only by
+// the destination node.
 export interface PathPayload extends BasePayload {
-  pathLength: number;
-  pathHashSize: number;
-  pathHashes: string[];
-  extraType: number;
-  extraData: string;
+  destinationHash: string;
+  sourceHash: string;
+  cipherMac: string;
+  ciphertext: string; // encrypted {path_len, path, extra_type, extra} as hex
+  ciphertextLength: number;
 }
 
 export interface ResponsePayload extends BasePayload {

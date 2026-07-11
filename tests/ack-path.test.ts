@@ -61,23 +61,23 @@ describe('Ack/Path Packet Decoding', () => {
       
       if (result.payload.decoded && 'type' in result.payload.decoded && result.payload.decoded.type === PayloadType.Path) {
         const pathPayload = result.payload.decoded as PathPayload;
-        
+
         expect(pathPayload.isValid).toBe(true);
-        
-        // Validate Path payload structure with hex breakdown
-        expect(pathPayload.pathLength).toBe(18); // Byte 0: 0x12 = 18 path hashes in payload
-        expect(pathPayload.pathHashes).toEqual([
-          '79', '39', '9E', 'FE', '19', '42', 'B8', 'A3', 'FF',
-          'A1', '0F', '54', 'D9', 'C6', '02', 'FF', '2C', '8C'
-        ]); // Bytes 1-18: path hashes
-        expect(pathPayload.extraType).toBe(244); // Byte 19: 0xF4 = 244
-        expect(pathPayload.extraData).toBe(''); // No extra data after extraType
+
+        // Path shares the encrypted envelope of Request/Response/TextMessage
+        // (docs/payloads.md): dest(1) + src(1) + MAC(2) + ciphertext. The
+        // returned path itself is INSIDE the ciphertext.
+        expect(pathPayload.destinationHash).toBe('12');
+        expect(pathPayload.sourceHash).toBe('79');
+        expect(pathPayload.cipherMac).toBe('399E');
+        expect(pathPayload.ciphertext).toBe('FE1942B8A3FFA10F54D9C602FF2C8CF4');
+        expect(pathPayload.ciphertextLength).toBe(16);
       } else {
         fail('Path payload not decoded correctly');
       }
     });
 
-    it('should decode multi-byte path payload hashes correctly', () => {
+    it('decodes the envelope of a multi-byte-path packet payload', () => {
       const result = MeshCorePacketDecoder.decode(MULTIBYTE_PATH_PACKET);
 
       expect(result.isValid).toBe(true);
@@ -89,14 +89,39 @@ describe('Ack/Path Packet Decoding', () => {
         const pathPayload = result.payload.decoded as PathPayload;
 
         expect(pathPayload.isValid).toBe(true);
-        expect(pathPayload.pathLength).toBe(2);
-        expect(pathPayload.pathHashSize).toBe(2);
-        expect(pathPayload.pathHashes).toEqual(['AABB', 'CCDD']);
-        expect(pathPayload.extraType).toBe(0xEE);
-        expect(pathPayload.extraData).toBe('FF00');
+        expect(pathPayload.destinationHash).toBe('42');
+        expect(pathPayload.sourceHash).toBe('AA');
+        expect(pathPayload.cipherMac).toBe('BBCC');
+        expect(pathPayload.ciphertext).toBe('DDEEFF00');
       } else {
         fail('Path payload not decoded correctly');
       }
+    });
+
+    it('decodes a real-world Path packet as the encrypted envelope it is', () => {
+      // Captured off the air. The old decoder read the destination hash (0xAE)
+      // as a plaintext path-length byte (hash size 3, 46 hops) and failed with
+      // "Path payload too short (need 140 bytes …)".
+      const result = MeshCorePacketDecoder.decode('21020f36ae381fe3df7ab1689592abf42586dfbf1040beca');
+
+      expect(result.isValid).toBe(true);
+      expect(result.path).toEqual(['0F', '36']);
+
+      const pathPayload = result.payload.decoded as PathPayload;
+      expect(pathPayload.isValid).toBe(true);
+      expect(pathPayload.errors).toBeUndefined();
+      expect(pathPayload.destinationHash).toBe('AE');
+      expect(pathPayload.sourceHash).toBe('38');
+      expect(pathPayload.cipherMac).toBe('1FE3');
+      expect(pathPayload.ciphertext).toBe('DF7AB1689592ABF42586DFBF1040BECA');
+      expect(pathPayload.ciphertextLength).toBe(16);
+    });
+
+    it('flags a Path payload shorter than the 4-byte envelope', () => {
+      const result = MeshCorePacketDecoder.decode('2100AABB');
+      const pathPayload = result.payload.decoded as PathPayload;
+      expect(pathPayload.isValid).toBe(false);
+      expect(pathPayload.errors?.[0]).toMatch(/minimum 4 bytes/);
     });
   });
 });
