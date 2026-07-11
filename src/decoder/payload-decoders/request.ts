@@ -21,9 +21,7 @@ export class RequestPayloadDecoder {
           version: PayloadVersion.Version1,
           isValid: false,
           errors: ['Request payload too short (minimum 4 bytes: dest hash + source hash + MAC)'],
-          timestamp: 0,
-          requestType: RequestType.GetStats,
-          requestData: '',
+
           destinationHash: '',
           sourceHash: '',
           cipherMac: '',
@@ -109,9 +107,8 @@ export class RequestPayloadDecoder {
         type: PayloadType.Request,
         version: PayloadVersion.Version1,
         isValid: true,
-        timestamp: 0, // Encrypted, cannot be parsed without decryption
-        requestType: RequestType.GetStats, // Encrypted, cannot be determined without decryption
-        requestData: '',
+        // timestamp/requestType/requestData live inside the ciphertext —
+        // absent rather than fabricated (they used to read 0 / GetStats).
         destinationHash,
         sourceHash,
         cipherMac,
@@ -129,9 +126,7 @@ export class RequestPayloadDecoder {
         version: PayloadVersion.Version1,
         isValid: false,
         errors: [error instanceof Error ? error.message : 'Failed to decode request payload'],
-        timestamp: 0,
-        requestType: RequestType.GetStats,
-        requestData: '',
+
         destinationHash: '',
         sourceHash: '',
         cipherMac: '',

@@ -57,9 +57,12 @@ export interface RequestPayload extends BasePayload {
   sourceHash: string;
   cipherMac: string;
   ciphertext: string; // raw encrypted data as hex
-  timestamp: number; // encrypted, set to 0 unless decrypted
-  requestType: RequestType; // encrypted, default value unless decrypted
-  requestData?: string; // encrypted, empty unless decrypted
+  // These live INSIDE the ciphertext; this decoder cannot decrypt pairwise
+  // traffic, so they are absent (previously returned as fabricated
+  // placeholders: 0 / GetStats — indistinguishable from real values).
+  timestamp?: number;
+  requestType?: RequestType;
+  requestData?: string;
   decrypted?: {
     timestamp: number;
     requestType: RequestType;
