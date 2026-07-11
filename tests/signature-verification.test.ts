@@ -29,13 +29,13 @@ describe('Ed25519 Signature Verification', () => {
       expect(advert.signature).toBe('2E58408DD8FCC51906ECA98EBF94A037886BDADE7ECD09FD92B839491DF3809C9454F5286D1D3370AC31A34593D569E9A042A3B41FD331DFFB7E18599CE1E609');
       
       // Validate app data structure
-      expect(advert.appData.flags).toBe(146);
-      expect(advert.appData.deviceRole).toBe(DeviceRole.Repeater);
-      expect(advert.appData.hasName).toBe(true);
-      expect(advert.appData.hasLocation).toBe(true);
-      expect(advert.appData.name).toBe('WW7STR/PugetMesh Cougar');
-      expect(advert.appData.location?.latitude).toBeCloseTo(47.543968, 6);
-      expect(advert.appData.location?.longitude).toBeCloseTo(-122.108616, 6);
+      expect(advert.appData!.flags).toBe(146);
+      expect(advert.appData!.deviceRole).toBe(DeviceRole.Repeater);
+      expect(advert.appData!.hasName).toBe(true);
+      expect(advert.appData!.hasLocation).toBe(true);
+      expect(advert.appData!.name).toBe('WW7STR/PugetMesh Cougar');
+      expect(advert.appData!.location?.latitude).toBeCloseTo(47.543968, 6);
+      expect(advert.appData!.location?.longitude).toBeCloseTo(-122.108616, 6);
       
       // Signature verification should be performed
       expect(advert.signatureValid).toBeDefined();
@@ -98,7 +98,7 @@ describe('Ed25519 Signature Verification', () => {
       expect(syncAdvert.publicKey).toBe(asyncAdvert.publicKey);
       expect(syncAdvert.timestamp).toBe(asyncAdvert.timestamp);
       expect(syncAdvert.signature).toBe(asyncAdvert.signature);
-      expect(syncAdvert.appData.name).toBe(asyncAdvert.appData.name);
+      expect(syncAdvert.appData!.name).toBe(asyncAdvert.appData!.name);
       
       // Signature verification should only be present in async version
       expect(syncAdvert.signatureValid).toBeUndefined();

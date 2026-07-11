@@ -15,7 +15,9 @@ export interface AdvertPayload extends BasePayload {
   signature: string;
   signatureValid?: boolean; // Ed25519 signature verification result
   signatureError?: string; // Error message if verification failed
-  appData: {
+  // OPTIONAL per payloads.md ("appdata: rest of payload, optional") — a bare
+  // 100-byte advert (pubkey + timestamp + signature) carries none.
+  appData?: {
     flags: number;
     deviceRole: DeviceRole;
     hasLocation: boolean;

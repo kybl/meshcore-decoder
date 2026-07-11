@@ -111,11 +111,11 @@ function showPayloadDetails(payload: any): void {
   switch (payload.type) {
     case PayloadType.Advert:
       const advert = payload as AdvertPayload;
-      console.log(`${chalk.bold('Device Role:')} ${getDeviceRoleName(advert.appData.deviceRole)}`);
-      if (advert.appData.name) {
+      if (advert.appData) console.log(`${chalk.bold('Device Role:')} ${getDeviceRoleName(advert.appData.deviceRole)}`);
+      if (advert.appData?.name) {
         console.log(`${chalk.bold('Device Name:')} ${advert.appData.name}`);
       }
-      if (advert.appData.location) {
+      if (advert.appData?.location) {
         console.log(`${chalk.bold('Location:')} ${advert.appData.location.latitude}, ${advert.appData.location.longitude}`);
       }
       console.log(`${chalk.bold('Timestamp:')} ${new Date(advert.timestamp * 1000).toISOString()}`);
