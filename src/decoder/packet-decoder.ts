@@ -317,8 +317,16 @@ export class MeshCorePacketDecoder {
       // decode payload based on type and optionally get segments in one pass
       let decodedPayload = null;
       const payloadSegments: PayloadSegment[] = [];
-      
-      if (payloadType === PayloadType.Advert) {
+      let versionWarning: string | undefined;
+
+      if (payloadVersion !== PayloadVersion.Version1) {
+        // Future payload versions change the hash/MAC sizes inside payloads
+        // (packet_format.md: v2 = e.g. 2-byte hashes, 4-byte MAC). Decoding
+        // them with the v1 layout would produce plausible-looking garbage, so
+        // leave the payload raw and say so. The outer packet (header, path)
+        // is version-independent and stays valid.
+        versionWarning = `Payload version ${payloadVersion + 1} not supported — payload left undecoded (v1 layout only)`;
+      } else if (payloadType === PayloadType.Advert) {
         const result = AdvertPayloadDecoder.decode(payloadBytes, {
           includeSegments: includeStructure,
           segmentOffset: 0
@@ -471,7 +479,8 @@ export class MeshCorePacketDecoder {
           decoded: decodedPayload
         },
         totalBytes: bytes.length,
-        isValid: true
+        isValid: true,
+        ...(versionWarning ? { errors: [versionWarning] } : {})
       };
 
       const structure: PacketStructure = {

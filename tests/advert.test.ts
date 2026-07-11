@@ -52,6 +52,17 @@ describe('MeshCorePacketDecoder', () => {
       expect(advert.appData).toBeUndefined();
     });
 
+    it('leaves the payload undecoded for unsupported payload versions', () => {
+      // header 0x51: version bits (7:6) = 0b01 = payload v2 — hash/MAC sizes
+      // differ from v1, so decoding with the v1 layout would be garbage.
+      const hex = '5100' + 'ab'.repeat(32) + '01020304' + 'cd'.repeat(64);
+      const result = MeshCorePacketDecoder.decode(hex);
+      expect(result.isValid).toBe(true);           // outer packet is fine
+      expect(result.payloadVersion).toBe(1);
+      expect(result.payload.decoded).toBeNull();   // not misparsed as v1
+      expect(result.errors?.[0]).toMatch(/version 2 not supported/);
+    });
+
     it('should handle invalid packets gracefully', () => {
       const packet = MeshCorePacketDecoder.decode('11'); // Too short
       
