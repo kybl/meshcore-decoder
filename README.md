@@ -1,8 +1,24 @@
 # MeshCore Decoder
 
-A TypeScript library for decoding MeshCore mesh networking packets with full cryptographic support. Uses WebAssembly (WASM) for Ed25519 key derivation through the [orlp/ed25519 library](https://github.com/orlp/ed25519).
+A TypeScript library for decoding MeshCore mesh networking packets with full cryptographic support.
 
-This powers the [MeshCore Packet Analyzer](https://analyzer.letsme.sh/).
+The upstream library powers the [MeshCore Packet Analyzer](https://analyzer.letsme.sh/).
+
+## About this fork
+
+This is a fork of [michaelhart/meshcore-decoder](https://github.com/michaelhart/meshcore-decoder) (v0.3.0) with the following changes:
+
+- **Pure-JS crypto, no WASM**: `crypto-js` and the orlp/ed25519 WebAssembly module are replaced by the tiny, audited [@noble](https://paulmillr.com/noble/) packages (`@noble/hashes`, `@noble/ciphers`, `@noble/ed25519`). Output is byte-for-byte identical; the git submodule, build toolchain and the 57 KB `.wasm` are gone. A browser bundle drops from ~375 KB to ~60 KB (19 KB gzipped) and no special WASM setup is needed anymore.
+- **New payload decoders**: `GroupData` (0x06), `Multipart` (0x0A) and `RawCustom` (0x0F) are decoded instead of being left as raw fallback.
+- **Firmware 1.16.0 ACKs**: the trailing bytes of the new 6-byte ACK are surfaced as `AckPayload.extraData`.
+- **Channel-decryption convenience**: `MeshCoreDecoder.PUBLIC_CHANNEL_KEY`, `MeshCoreDecoder.addChannelKey(hex)` and a default key store (empty by default), plus a lean browser entry (`src/browser.ts`) for bundlers.
+- **Path payloads decoded correctly**: a PATH payload is the same encrypted envelope as Request/Response (`destination_hash + source_hash + cipher_mac + ciphertext`, the returned path lives *inside* the ciphertext). The upstream decoder applied the decrypted body's layout to the outer payload, so real-world Path packets failed with bogus errors. `PathPayload` now exposes `destinationHash` / `sourceHash` / `cipherMac` / `ciphertext`.
+- **Spec-alignment fixes** (per `docs/packet_format.md` + `docs/payloads.md`):
+  - a bare 100-byte advert (pubkey + timestamp + signature) is valid — `appData` is optional, as the spec says;
+  - Request no longer fabricates `timestamp: 0` / `requestType: GetStats` (they live inside the ciphertext and are absent unless decrypted);
+  - packets with an unsupported payload version (header bits 6–7 ≠ v1) keep their payload raw with an explicit error instead of being silently misparsed;
+  - DISCOVER_RESP requires the documented pubkey length (exactly 8 or 32 bytes);
+  - TRACE packets no longer expose the per-hop SNR bytes from the packet header as `path` (they are SNR readings, not node hashes — see `payload.decoded.snrValues`); `path` is `null` for TRACE.
 
 ## Features
 
@@ -12,16 +28,19 @@ This powers the [MeshCore Packet Analyzer](https://analyzer.letsme.sh/).
 
 ## Installation
 
+This fork is not published on npm; install it straight from GitHub (the
+`prepare` script builds it on install):
+
 ### Install to a single project
 
 ```bash
-npm install @michaelhart/meshcore-decoder
+npm install github:kybl/meshcore-decoder
 ```
 
 ### Install CLI (install globally)
 
 ```bash
-npm install -g @michaelhart/meshcore-decoder
+npm install -g github:kybl/meshcore-decoder
 ```
 
 ## Quick Start
@@ -33,7 +52,7 @@ import {
   Utils,
   DecodedPacket,
   AdvertPayload 
-} from '@michaelhart/meshcore-decoder';
+} from '@kybl/meshcore-decoder';
 
 // Decode a MeshCore packet
 const hexData: string = '11007E7662676F7F0850A8A355BAAFBFC1EB7B4174C340442D7D7161C9474A2C94006CE7CF682E58408DD8FCC51906ECA98EBF94A037886BDADE7ECD09FD92B839491DF3809C9454F5286D1D3370AC31A34593D569E9A042A3B41FD331DFFB7E18599CE1E60992A076D50238C5B8F85757375354522F50756765744D65736820436F75676172';
@@ -46,10 +65,13 @@ console.log(`Message Hash: ${packet.messageHash}`);
 
 if (packet.payloadType === PayloadType.Advert && packet.payload.decoded) {
   const advert: AdvertPayload = packet.payload.decoded as AdvertPayload;
-  console.log(`Device Name: ${advert.appData.name}`);
-  console.log(`Device Role: ${Utils.getDeviceRoleName(advert.appData.deviceRole)}`);
-  if (advert.appData.location) {
-    console.log(`Location: ${advert.appData.location.latitude}, ${advert.appData.location.longitude}`);
+  // appData is optional — a bare advert (pubkey + timestamp + signature) has none
+  if (advert.appData) {
+    console.log(`Device Name: ${advert.appData.name}`);
+    console.log(`Device Role: ${Utils.getDeviceRoleName(advert.appData.deviceRole)}`);
+    if (advert.appData.location) {
+      console.log(`Location: ${advert.appData.location.latitude}, ${advert.appData.location.longitude}`);
+    }
   }
 }
 ```
@@ -59,7 +81,7 @@ if (packet.payloadType === PayloadType.Advert && packet.payload.decoded) {
 Here's what a complete decoded packet looks like:
 
 ```typescript
-import { MeshCoreDecoder, DecodedPacket } from '@michaelhart/meshcore-decoder';
+import { MeshCoreDecoder, DecodedPacket } from '@kybl/meshcore-decoder';
 
 const hexData: string = '11007E7662676F7F0850A8A355BAAFBFC1EB7B4174C340442D7D7161C9474A2C94006CE7CF682E58408DD8FCC51906ECA98EBF94A037886BDADE7ECD09FD92B839491DF3809C9454F5286D1D3370AC31A34593D569E9A042A3B41FD331DFFB7E18599CE1E60992A076D50238C5B8F85757375354522F50756765744D65736820436F75676172';
 
@@ -114,23 +136,35 @@ console.log(JSON.stringify(packet, null, 2));
 | `0x03` | Acknowledgment | Acknowledgment | ✅ | N/A | ✅ |
 | `0x04` | Node advertisement | Node advertisement | ✅ | N/A | ✅ |
 | `0x05` | Group text message | Group text message | ✅ | ✅ | ✅ |
-| `0x06` | Group datagram | Group datagram | 🚧 | 🚧 | 🚧 |
+| `0x06` | Group datagram | Group datagram | ✅ | 🚧 | ✅ |
 | `0x07` | Anonymous request | Anonymous request | ✅ | 🚧 | ✅ |
-| `0x08` | Returned path | Returned path | ✅ | N/A | ✅ |
+| `0x08` | Returned path | Returned path (encrypted envelope) | ✅ | 🚧 | ✅ |
 | `0x09` | Trace | Trace a path, collecting SNI for each hop | ✅ | N/A | ✅ |
-| `0x0A` | Multi-part packet | Packet is part of a sequence of packets | 🚧 | 🚧 | 🚧 |
-| `0x0F` | Custom packet | Custom packet (raw bytes, custom encryption) | 🚧 | 🚧 | 🚧 |
+| `0x0A` | Multi-part packet | Packet is part of a sequence of packets | ✅ | 🚧 | ✅ |
+| `0x0F` | Custom packet | Custom packet (raw bytes, custom encryption) | ✅ | N/A | ✅ |
 
 **Legend:**
 - ✅ Fully implemented
 - 🚧 Planned/In development
 - `-` Not applicable
 
-For some packet types not yet supported here, they may not exist in MeshCore yet or I have yet to observe these packet types on the mesh.
+Decryption of pairwise (Request/Response/TextMessage/Path) traffic requires the destination node's secret and is out of scope for a passive decoder.
 
 ## Decryption Support
 
-Simply provide your channel secret keys and the library handles everything else:
+The quickest way is to register channel keys with the default key store (fork addition):
+
+```typescript
+import { MeshCoreDecoder } from '@kybl/meshcore-decoder';
+
+// Register the well-known public channel key (or your own secrets)
+MeshCoreDecoder.addChannelKey(MeshCoreDecoder.PUBLIC_CHANNEL_KEY);
+
+// Subsequent decode() calls decrypt matching GroupText messages automatically
+const packet = MeshCoreDecoder.decode(groupTextHexData);
+```
+
+Alternatively, provide an explicit key store per call:
 
 ```typescript
 import { 
@@ -139,7 +173,7 @@ import {
   CryptoKeyStore,
   DecodedPacket,
   GroupTextPayload 
-} from '@michaelhart/meshcore-decoder';
+} from '@kybl/meshcore-decoder';
 
 // Create a key store with channel secret keys
 const keyStore: CryptoKeyStore = MeshCoreDecoder.createKeyStore({
@@ -178,7 +212,7 @@ The library automatically:
 For detailed packet analysis and debugging, use `analyzeStructure()` to get byte-level breakdowns:
 
 ```typescript
-import { MeshCoreDecoder, PacketStructure } from '@michaelhart/meshcore-decoder';
+import { MeshCoreDecoder, PacketStructure } from '@kybl/meshcore-decoder';
 
 console.log('=== Packet Breakdown ===');
 const hexData: string = '11007E7662676F7F0850A8A355BAAFBFC1EB7B4174C340442D7D7161C9474A2C94006CE7CF682E58408DD8FCC51906ECA98EBF94A037886BDADE7ECD09FD92B839491DF3809C9454F5286D1D3370AC31A34593D569E9A042A3B41FD331DFFB7E18599CE1E60992A076D50238C5B8F85757375354522F50756765744D65736820436F75676172';
@@ -226,7 +260,7 @@ import {
   transportCodeMatchesRegion,
   PayloadType,
   hexToBytes
-} from 'meshcore-decoder';
+} from '@kybl/meshcore-decoder';
 
 // Key for a named region (e.g. "#Europe")
 const regionKey = calcRegionKey('#Europe');
@@ -278,10 +312,10 @@ The `analyzeStructure()` method provides:
 
 ## Ed25519 Key Derivation
 
-The library includes MeshCore-compatible Ed25519 key derivation using the exact orlp/ed25519 algorithm via WebAssembly:
+The library includes MeshCore-compatible Ed25519 key derivation (the orlp/ed25519 64-byte expanded-key format, implemented in pure JS via `@noble/ed25519` in this fork — byte-for-byte identical to the upstream WASM build):
 
 ```typescript
-import { Utils } from '@michaelhart/meshcore-decoder';
+import { Utils } from '@kybl/meshcore-decoder';
 
 // Derive public key from MeshCore private key (64-byte format)
 const privateKey = '18469d6140447f77de13cd8d761e605431f52269fbff43b0925752ed9e6745435dc6a86d2568af8b70d3365db3f88234760c8ecc645ce469829bc45b65f1d5d5';
@@ -301,7 +335,7 @@ For quick analysis from the terminal, install globally and use the CLI:
 
 ```bash
 # Install globally
-npm install -g @michaelhart/meshcore-decoder
+npm install -g @kybl/meshcore-decoder
 
 # Analyze a packet
 meshcore-decoder 11007E7662676F7F0850A8A355BAAFBFC1EB7B4174C340442D7D7161C9474A2C94006CE7CF682E58408DD8FCC51906ECA98EBF94A037886BDADE7ECD09FD92B839491DF3809C9454F5286D1D3370AC31A34593D569E9A042A3B41FD331DFFB7E18599CE1E60992A076D50238C5B8F85757375354522F50756765744D65736820436F75676172
@@ -326,131 +360,19 @@ meshcore-decoder derive-key 18469d6140447f77de13cd8d761e605431f52269fbff43b09257
 ```
 
 
-## Using with Angular
+## Using in the browser (Angular, React, ...)
 
-The library works in Angular (and other browser-based) applications but requires additional configuration for WASM support and browser compatibility.
-
-### 1. Configure Assets in `angular.json`
-
-Add the WASM files to your Angular assets configuration:
-
-```json
-{
-  "projects": {
-    "your-app": {
-      "architect": {
-        "build": {
-          "options": {
-            "assets": [
-              // ... your existing assets ...
-              {
-                "glob": "orlp-ed25519.*",
-                "input": "./node_modules/@michaelhart/meshcore-decoder/lib",
-                "output": "assets/"
-              }
-            ]
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-### 2. Create a WASM Service
-
-Create `src/app/services/meshcore-wasm.ts`:
+The library is pure JavaScript — no WebAssembly, no special asset configuration.
+It works out of the box with any bundler; just import and use it. For a smaller
+bundle, bundlers can use the lean browser entry (`src/browser.ts`), which skips
+the CLI-only dependencies.
 
 ```typescript
-import { Injectable } from '@angular/core';
-import { BehaviorSubject } from 'rxjs';
+import { MeshCorePacketDecoder, Utils } from '@kybl/meshcore-decoder';
 
-@Injectable({ providedIn: 'root' })
-export class MeshCoreWasmService {
-  private wasm: any = null;
-  public ready = new BehaviorSubject<boolean>(false);
-
-  constructor() {
-    this.loadWasm();
-  }
-
-  private async loadWasm() {
-    try {
-      const jsResponse = await fetch('/assets/orlp-ed25519.js');
-      const jsText = await jsResponse.text();
-      
-      const script = document.createElement('script');
-      script.textContent = jsText;
-      document.head.appendChild(script);
-      
-      this.wasm = await (window as any).OrlpEd25519({
-        locateFile: (path: string) => path === 'orlp-ed25519.wasm' ? '/assets/orlp-ed25519.wasm' : path
-      });
-      
-      this.ready.next(true);
-    } catch (error) {
-      console.error('WASM load failed:', error);
-      this.ready.next(false);
-    }
-  }
-
-  derivePublicKey(privateKeyHex: string): string | null {
-    if (!this.wasm) return null;
-    
-    const privateKeyBytes = this.hexToBytes(privateKeyHex);
-    const privateKeyPtr = 1024;
-    const publicKeyPtr = 1088;
-    
-    this.wasm.HEAPU8.set(privateKeyBytes, privateKeyPtr);
-    
-    const result = this.wasm.ccall('orlp_derive_public_key', 'number', ['number', 'number'], [publicKeyPtr, privateKeyPtr]);
-    
-    if (result === 0) {
-      const publicKeyBytes = this.wasm.HEAPU8.subarray(publicKeyPtr, publicKeyPtr + 32);
-      return this.bytesToHex(publicKeyBytes);
-    }
-    
-    return null;
-  }
-
-  private hexToBytes(hex: string): Uint8Array {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }
-    return bytes;
-  }
-
-  private bytesToHex(bytes: Uint8Array): string {
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-  }
-}
-```
-
-### 3. Basic Usage
-
-```typescript
-import { MeshCorePacketDecoder } from '@michaelhart/meshcore-decoder';
-import { MeshCoreWasmService } from './services/meshcore-wasm';
-
-// Basic packet decoding (works immediately)
 const packet = MeshCorePacketDecoder.decode(hexData);
-
-// Key derivation (wait for WASM)
-wasmService.ready.subscribe(isReady => {
-  if (isReady) {
-    const publicKey = wasmService.derivePublicKey(privateKeyHex);
-  }
-});
+const publicKey = await Utils.derivePublicKey(privateKeyHex);
 ```
-
-### Angular/Browser: Important Notes
-
-- **WASM Loading**: The library uses WebAssembly for Ed25519 key derivation. This requires proper asset configuration and a service to handle async WASM loading.
-- **Browser Compatibility**: The library automatically detects the environment and uses Web Crypto API in browsers, Node.js crypto in Node.js.
-- **Async Operations**: Key derivation is async due to WASM loading. Always wait for the `WasmService.ready` observable.
-- **Error Handling**: WASM operations may fail in some environments. Always wrap in try-catch blocks.
-
 
 ## Development
 

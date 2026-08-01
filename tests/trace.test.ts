@@ -29,7 +29,9 @@ describe('Trace Packets', () => {
     expect(trace.snrValues).toEqual([12]);
     
     expect(packet.pathLength).toBe(1);
-    expect(packet.path).toEqual(['30']);
+    // TRACE "path" header bytes are per-hop SNR readings (see snrValues above),
+    // not node hashes — they must not be presented as a path.
+    expect(packet.path).toBeNull();
     expect(packet.totalBytes).toBe(hexData.length / 2);
   });
 
@@ -62,7 +64,7 @@ describe('Trace Packets', () => {
     expect(packet.routeType).toBe(RouteType.Direct);
     expect(packet.payloadType).toBe(PayloadType.Trace);
     expect(packet.pathLength).toBe(1);
-    expect(packet.path).toEqual(['30']);
+    expect(packet.path).toBeNull(); // SNR readings, not node hashes
 
     const trace = packet.payload.decoded as TracePayload;
     expect(trace.isValid).toBe(true);

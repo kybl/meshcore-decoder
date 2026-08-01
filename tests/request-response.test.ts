@@ -20,9 +20,11 @@ describe('Request/Response/AnonRequest Packet Decoding', () => {
       if (result.payload.decoded && 'type' in result.payload.decoded && result.payload.decoded.type === PayloadType.Request) {
         const requestPayload = result.payload.decoded as RequestPayload;
         
-        // Verify request type (0x2F = 47)
-        expect(requestPayload.requestType).toBe(RequestType.GetStats);
-        
+        // timestamp/requestType live inside the ciphertext — they must be
+        // ABSENT, not fabricated placeholders (they used to read 0 / GetStats).
+        expect(requestPayload.timestamp).toBeUndefined();
+        expect(requestPayload.requestType).toBeUndefined();
+
         // Verify request data
         expect(result.payload.raw).toBe('D1DEB01B2F8B72DD363AA4EF07E0BDA2266A8979');
       } else {

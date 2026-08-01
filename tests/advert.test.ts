@@ -26,18 +26,41 @@ describe('MeshCorePacketDecoder', () => {
       expect(advert.signature).toBe('2E58408DD8FCC51906ECA98EBF94A037886BDADE7ECD09FD92B839491DF3809C9454F5286D1D3370AC31A34593D569E9A042A3B41FD331DFFB7E18599CE1E609');
       
       // Validate app data structure
-      expect(advert.appData.flags).toBe(146); // 0x92
-      expect(advert.appData.deviceRole).toBe(DeviceRole.Repeater);
-      expect(advert.appData.hasName).toBe(true);
-      expect(advert.appData.hasLocation).toBe(true);
-      expect(advert.appData.name).toBe('WW7STR/PugetMesh Cougar');
-      expect(advert.appData.location?.latitude).toBeCloseTo(47.543968, 6);
-      expect(advert.appData.location?.longitude).toBeCloseTo(-122.108616, 6);
+      expect(advert.appData!.flags).toBe(146); // 0x92
+      expect(advert.appData!.deviceRole).toBe(DeviceRole.Repeater);
+      expect(advert.appData!.hasName).toBe(true);
+      expect(advert.appData!.hasLocation).toBe(true);
+      expect(advert.appData!.name).toBe('WW7STR/PugetMesh Cougar');
+      expect(advert.appData!.location?.latitude).toBeCloseTo(47.543968, 6);
+      expect(advert.appData!.location?.longitude).toBeCloseTo(-122.108616, 6);
       
       // Verify packet structure
       expect(packet.pathLength).toBe(0); // No path for this packet
       expect(packet.path).toBeNull();
       expect(packet.totalBytes).toBe(hexData.length / 2); // Hex string length / 2
+    });
+
+    it('accepts a bare 100-byte advert (appdata is optional)', () => {
+      // header 0x11 = Flood + Advert, path_len 0x00, then exactly
+      // pubkey(32) + timestamp(4) + signature(64) = 100 payload bytes.
+      const hex = '1100' + 'ab'.repeat(32) + '01020304' + 'cd'.repeat(64);
+      const result = MeshCorePacketDecoder.decode(hex);
+      expect(result.isValid).toBe(true);
+      const advert = result.payload.decoded as AdvertPayload;
+      expect(advert.isValid).toBe(true);
+      expect(advert.publicKey).toBe('AB'.repeat(32));
+      expect(advert.appData).toBeUndefined();
+    });
+
+    it('leaves the payload undecoded for unsupported payload versions', () => {
+      // header 0x51: version bits (7:6) = 0b01 = payload v2 — hash/MAC sizes
+      // differ from v1, so decoding with the v1 layout would be garbage.
+      const hex = '5100' + 'ab'.repeat(32) + '01020304' + 'cd'.repeat(64);
+      const result = MeshCorePacketDecoder.decode(hex);
+      expect(result.isValid).toBe(true);           // outer packet is fine
+      expect(result.payloadVersion).toBe(1);
+      expect(result.payload.decoded).toBeNull();   // not misparsed as v1
+      expect(result.errors?.[0]).toMatch(/version 2 not supported/);
     });
 
     it('should handle invalid packets gracefully', () => {

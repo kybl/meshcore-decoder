@@ -15,7 +15,9 @@ export interface AdvertPayload extends BasePayload {
   signature: string;
   signatureValid?: boolean; // Ed25519 signature verification result
   signatureError?: string; // Error message if verification failed
-  appData: {
+  // OPTIONAL per payloads.md ("appdata: rest of payload, optional") — a bare
+  // 100-byte advert (pubkey + timestamp + signature) carries none.
+  appData?: {
     flags: number;
     deviceRole: DeviceRole;
     hasLocation: boolean;
@@ -55,9 +57,12 @@ export interface RequestPayload extends BasePayload {
   sourceHash: string;
   cipherMac: string;
   ciphertext: string; // raw encrypted data as hex
-  timestamp: number; // encrypted, set to 0 unless decrypted
-  requestType: RequestType; // encrypted, default value unless decrypted
-  requestData?: string; // encrypted, empty unless decrypted
+  // These live INSIDE the ciphertext; this decoder cannot decrypt pairwise
+  // traffic, so they are absent (previously returned as fabricated
+  // placeholders: 0 / GetStats — indistinguishable from real values).
+  timestamp?: number;
+  requestType?: RequestType;
+  requestData?: string;
   decrypted?: {
     timestamp: number;
     requestType: RequestType;
@@ -94,14 +99,21 @@ export interface AnonRequestPayload extends BasePayload {
 
 export interface AckPayload extends BasePayload {
   checksum: string;
+  // Firmware 1.16.0 introduced 6-byte ACKs: 4-byte CRC + extended attempt /
+  // random bytes. The receiver still only uses the first 4 bytes as the CRC;
+  // any trailing bytes are surfaced here verbatim.
+  extraData?: string;
 }
 
+// Same encrypted envelope as Request/Response/TextMessage (docs/payloads.md):
+// the returned path itself lives INSIDE the ciphertext and is readable only by
+// the destination node.
 export interface PathPayload extends BasePayload {
-  pathLength: number;
-  pathHashSize: number;
-  pathHashes: string[];
-  extraType: number;
-  extraData: string;
+  destinationHash: string;
+  sourceHash: string;
+  cipherMac: string;
+  ciphertext: string; // encrypted {path_len, path, extra_type, extra} as hex
+  ciphertextLength: number;
 }
 
 export interface ResponsePayload extends BasePayload {
@@ -145,18 +157,43 @@ export interface ControlDiscoverRespPayload extends ControlPayloadBase {
   publicKeyLength: number; // 8 (prefix) or 32 (full)
 }
 
+// GRP_DATA (group datagram) — channel_hash + MAC + encrypted data
+export interface GroupDataPayload extends BasePayload {
+  channelHash: string;
+  cipherMac: string;
+  ciphertext: string; // raw encrypted data as hex
+  ciphertextLength: number;
+}
+
+// MULTIPART (multi-packet segment) — on-air layout not part of the public spec
+export interface MultipartPayload extends BasePayload {
+  partial: boolean;
+  raw: string;
+  length: number;
+}
+
+// RAW_CUSTOM — application-defined custom-encrypted payload
+export interface RawCustomPayload extends BasePayload {
+  encrypted: boolean;
+  raw: string;
+  length: number;
+}
+
 // Union type for all Control payload sub-types
 export type ControlPayload = ControlDiscoverReqPayload | ControlDiscoverRespPayload;
 
 // union type for all payload types
-export type PayloadData = 
-  | AdvertPayload 
-  | TracePayload 
-  | GroupTextPayload 
-  | RequestPayload 
-  | TextMessagePayload 
-  | AnonRequestPayload 
-  | AckPayload 
+export type PayloadData =
+  | AdvertPayload
+  | TracePayload
+  | GroupTextPayload
+  | RequestPayload
+  | TextMessagePayload
+  | AnonRequestPayload
+  | AckPayload
   | PathPayload
   | ResponsePayload
-  | ControlPayload;
+  | ControlPayload
+  | GroupDataPayload
+  | MultipartPayload
+  | RawCustomPayload;

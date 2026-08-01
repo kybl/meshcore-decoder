@@ -11,22 +11,17 @@ import { Ed25519SignatureVerifier } from '../../crypto/ed25519-verifier';
 export class AdvertPayloadDecoder {
   static decode(payload: Uint8Array, options?: { includeSegments?: boolean; segmentOffset?: number }): AdvertPayload & { segments?: PayloadSegment[] } | null {
     try {
-      // start of appdata section: public_key(32) + timestamp(4) + signature(64) + flags(1) = 101 bytes
-      if (payload.length < 101) {
+      // public_key(32) + timestamp(4) + signature(64) = 100 bytes; appdata
+      // (flags + optional fields) is OPTIONAL per payloads.md.
+      if (payload.length < 100) {
         const result: AdvertPayload & { segments?: PayloadSegment[] } = {
           type: PayloadType.Advert,
           version: PayloadVersion.Version1,
           isValid: false,
-          errors: ['Advertisement payload too short'],
+          errors: ['Advertisement payload too short (minimum 100 bytes: pubkey + timestamp + signature)'],
           publicKey: '',
           timestamp: 0,
-          signature: '',
-          appData: {
-            flags: 0,
-            deviceRole: DeviceRole.ChatNode,
-            hasLocation: false,
-            hasName: false
-          }
+          signature: ''
         };
         
         if (options?.includeSegments) {
@@ -83,7 +78,24 @@ export class AdvertPayloadDecoder {
         });
       }
       currentOffset += 64;
-      
+
+      // appdata is optional — a bare 100-byte advert has none. Return the
+      // signed identity as-is instead of rejecting it (or inventing flags).
+      if (payload.length <= currentOffset) {
+        const bare: AdvertPayload & { segments?: PayloadSegment[] } = {
+          type: PayloadType.Advert,
+          version: PayloadVersion.Version1,
+          isValid: true,
+          publicKey,
+          timestamp,
+          signature
+        };
+        if (options?.includeSegments) {
+          bare.segments = segments;
+        }
+        return bare;
+      }
+
       const flags = payload[currentOffset];
       if (options?.includeSegments) {
         const binaryStr = flags.toString(2).padStart(8, '0');
@@ -121,7 +133,7 @@ export class AdvertPayloadDecoder {
       if (flags & AdvertFlags.HasLocation && payload.length >= offset + 8) {
         const lat = this.readInt32LE(payload, offset) / 1000000;
         const lon = this.readInt32LE(payload, offset + 4) / 1000000;
-        advert.appData.location = {
+        advert.appData!.location = {
           latitude: Math.round(lat * 1000000) / 1000000, // Keep precision
           longitude: Math.round(lon * 1000000) / 1000000
         };
@@ -155,12 +167,12 @@ export class AdvertPayloadDecoder {
       if (flags & AdvertFlags.HasName && payload.length > offset) {
         const nameBytes = payload.subarray(offset);
         const rawName = new TextDecoder('utf-8').decode(nameBytes).replace(/\0.*$/, '');
-        advert.appData.name = this.sanitizeControlCharacters(rawName) || rawName;
+        advert.appData!.name = this.sanitizeControlCharacters(rawName) || rawName;
         
         if (options?.includeSegments) {
           segments.push({
             name: 'Node Name',
-            description: `Node name: "${advert.appData.name}"`,
+            description: `Node name: "${advert.appData!.name}"`,
             startByte: segmentOffset + offset,
             endByte: segmentOffset + payload.length - 1,
             value: bytesToHex(nameBytes)
@@ -181,13 +193,7 @@ export class AdvertPayloadDecoder {
         errors: [error instanceof Error ? error.message : 'Failed to decode advertisement payload'],
         publicKey: '',
         timestamp: 0,
-        signature: '',
-        appData: {
-          flags: 0,
-          deviceRole: DeviceRole.ChatNode,
-          hasLocation: false,
-          hasName: false
-        }
+        signature: ''
       };
     }
   }

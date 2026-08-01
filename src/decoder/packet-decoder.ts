@@ -17,8 +17,32 @@ import { AckPayloadDecoder } from './payload-decoders/ack';
 import { PathPayloadDecoder } from './payload-decoders/path';
 import { TextMessagePayloadDecoder } from './payload-decoders/text-message';
 import { ControlPayloadDecoder } from './payload-decoders/control';
+import { GroupDataPayloadDecoder } from './payload-decoders/group-data';
+import { MultipartPayloadDecoder } from './payload-decoders/multipart';
+import { RawCustomPayloadDecoder } from './payload-decoders/raw-custom';
+import { ChannelCrypto } from '../crypto/channel-crypto';
 
 export class MeshCorePacketDecoder {
+  /** Well-known MeshCore public ("Public") channel key (AES-128). */
+  static readonly PUBLIC_CHANNEL_KEY = '8b3387e9c5cdea6ac9e5edbaa115cd72';
+
+  /**
+   * Default key store consulted when decode() is called without an explicit
+   * keyStore. Starts empty (no decryption by default); register keys with
+   * addChannelKey() — e.g. addChannelKey(PUBLIC_CHANNEL_KEY) to read the
+   * public channel.
+   */
+  static defaultKeyStore: MeshCoreKeyStore = new MeshCoreKeyStore();
+
+  /**
+   * Register a channel key (hex, AES-128/256) so that matching GroupText
+   * messages are decrypted by default. Returns the channel hash it maps to.
+   */
+  static addChannelKey(secretKeyHex: string): string {
+    this.defaultKeyStore.addChannelSecrets([secretKeyHex]);
+    return ChannelCrypto.calculateChannelHash(secretKeyHex);
+  }
+
   /**
    * Decode a raw packet from hex string
    */
@@ -60,7 +84,14 @@ export class MeshCorePacketDecoder {
   } {
     const bytes = hexToBytes(hexData);
     const segments: PacketSegment[] = [];
-    
+
+    // Fall back to the default key store (registered channel keys) when the
+    // caller did not provide one, so GroupText can be decrypted.
+    const effectiveOptions: DecryptionOptions = { ...options };
+    if (!effectiveOptions.keyStore) {
+      effectiveOptions.keyStore = MeshCorePacketDecoder.defaultKeyStore;
+    }
+
     if (bytes.length < 2) {
       const errorPacket: DecodedPacket = {
         messageHash: '',
@@ -286,8 +317,16 @@ export class MeshCorePacketDecoder {
       // decode payload based on type and optionally get segments in one pass
       let decodedPayload = null;
       const payloadSegments: PayloadSegment[] = [];
-      
-      if (payloadType === PayloadType.Advert) {
+      let versionWarning: string | undefined;
+
+      if (payloadVersion !== PayloadVersion.Version1) {
+        // Future payload versions change the hash/MAC sizes inside payloads
+        // (packet_format.md: v2 = e.g. 2-byte hashes, 4-byte MAC). Decoding
+        // them with the v1 layout would produce plausible-looking garbage, so
+        // leave the payload raw and say so. The outer packet (header, path)
+        // is version-independent and stays valid.
+        versionWarning = `Payload version ${payloadVersion + 1} not supported — payload left undecoded (v1 layout only)`;
+      } else if (payloadType === PayloadType.Advert) {
         const result = AdvertPayloadDecoder.decode(payloadBytes, {
           includeSegments: includeStructure,
           segmentOffset: 0
@@ -309,7 +348,7 @@ export class MeshCorePacketDecoder {
         }
       } else if (payloadType === PayloadType.GroupText) {
         const result = GroupTextPayloadDecoder.decode(payloadBytes, {
-          ...options,
+          ...effectiveOptions,
           includeSegments: includeStructure,
           segmentOffset: 0
         });
@@ -380,6 +419,36 @@ export class MeshCorePacketDecoder {
           payloadSegments.push(...result.segments);
           delete result.segments;
         }
+      } else if (payloadType === PayloadType.GroupData) {
+        const result = GroupDataPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === PayloadType.Multipart) {
+        const result = MultipartPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
+      } else if (payloadType === PayloadType.RawCustom) {
+        const result = RawCustomPayloadDecoder.decode(payloadBytes, {
+          includeSegments: includeStructure,
+          segmentOffset: 0
+        });
+        decodedPayload = result;
+        if (result?.segments) {
+          payloadSegments.push(...result.segments);
+          delete result.segments;
+        }
       }
 
       // if no segments were generated and we need structure, show basic payload info
@@ -404,13 +473,16 @@ export class MeshCorePacketDecoder {
         transportCodes,
         pathLength: pathHopCount,
         pathHashSize,
-        path,
+        // TRACE: the "path" header bytes are per-hop SNR readings, not node
+        // hashes (see payload.decoded.snrValues) — don't present them as a path.
+        path: payloadType === PayloadType.Trace ? null : path,
         payload: {
           raw: payloadHex,
           decoded: decodedPayload
         },
         totalBytes: bytes.length,
-        isValid: true
+        isValid: true,
+        ...(versionWarning ? { errors: [versionWarning] } : {})
       };
 
       const structure: PacketStructure = {

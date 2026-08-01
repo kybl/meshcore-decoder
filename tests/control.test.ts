@@ -117,6 +117,19 @@ describe('Control Packets', () => {
     });
   });
 
+  describe('DISCOVER_RESP with malformed pubkey length', () => {
+    it('flags a pubkey that is neither 8 nor 32 bytes', () => {
+      // header 0x2E = Direct + Control, no path; flags 0x92, snr, tag(4),
+      // then a 20-byte pubkey — payloads.md allows exactly 8 or 32.
+      const hex = '2e00' + '92' + '10' + 'aabbccdd' + '11'.repeat(20);
+      const result = MeshCorePacketDecoder.decode(hex);
+      const resp = result.payload.decoded as any;
+      expect(resp.isValid).toBe(false);
+      expect(resp.errors?.[0]).toMatch(/must be 8 or 32/);
+      expect(resp.publicKeyLength).toBe(20);
+    });
+  });
+
   describe('DISCOVER_REQ packets', () => {
     it('should decode DISCOVER_REQ packet', () => {
       // Construct a DISCOVER_REQ packet

@@ -64,7 +64,10 @@ export class AckPayloadDecoder {
         type: PayloadType.Ack,
         version: PayloadVersion.Version1,
         isValid: true,
-        checksum
+        checksum,
+        // Firmware 1.16.0 6-byte ACK: trailing bytes after the 4-byte CRC
+        // (extended attempt number + random data); the receiver ignores them.
+        ...(payload.length > 4 ? { extraData: bytesToHex(payload.subarray(4)) } : {})
       };
 
       if (options?.includeSegments) {
