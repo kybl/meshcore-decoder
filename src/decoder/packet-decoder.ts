@@ -473,7 +473,9 @@ export class MeshCorePacketDecoder {
         transportCodes,
         pathLength: pathHopCount,
         pathHashSize,
-        path,
+        // TRACE: the "path" header bytes are per-hop SNR readings, not node
+        // hashes (see payload.decoded.snrValues) — don't present them as a path.
+        path: payloadType === PayloadType.Trace ? null : path,
         payload: {
           raw: payloadHex,
           decoded: decodedPayload

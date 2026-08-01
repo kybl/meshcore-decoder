@@ -17,7 +17,8 @@ This is a fork of [michaelhart/meshcore-decoder](https://github.com/michaelhart/
   - a bare 100-byte advert (pubkey + timestamp + signature) is valid — `appData` is optional, as the spec says;
   - Request no longer fabricates `timestamp: 0` / `requestType: GetStats` (they live inside the ciphertext and are absent unless decrypted);
   - packets with an unsupported payload version (header bits 6–7 ≠ v1) keep their payload raw with an explicit error instead of being silently misparsed;
-  - DISCOVER_RESP requires the documented pubkey length (exactly 8 or 32 bytes).
+  - DISCOVER_RESP requires the documented pubkey length (exactly 8 or 32 bytes);
+  - TRACE packets no longer expose the per-hop SNR bytes from the packet header as `path` (they are SNR readings, not node hashes — see `payload.decoded.snrValues`); `path` is `null` for TRACE.
 
 ## Features
 
