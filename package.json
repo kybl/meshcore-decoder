@@ -1,6 +1,6 @@
 {
   "name": "@kybl/meshcore-decoder",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "TypeScript library for decoding MeshCore packets (fork of @michaelhart/meshcore-decoder)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
