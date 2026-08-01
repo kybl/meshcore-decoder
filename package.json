@@ -1,7 +1,7 @@
 {
-  "name": "@michaelhart/meshcore-decoder",
+  "name": "@kybl/meshcore-decoder",
   "version": "0.3.0",
-  "description": "TypeScript library for decoding MeshCore packets",
+  "description": "TypeScript library for decoding MeshCore packets (fork of @michaelhart/meshcore-decoder)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -12,6 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "build": "tsc",
+    "prepare": "npm run build",
     "build:watch": "tsc --watch",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
@@ -51,6 +52,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/michaelhart/meshcore-decoder.git"
+    "url": "git+https://github.com/kybl/meshcore-decoder.git"
   }
 }
